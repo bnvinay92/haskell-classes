@@ -21,3 +21,5 @@ cabal.project.local~
 .HTF/
 .ghc.environment.*
 .idea
+.stack-work/
+haskell-classes.cabal
