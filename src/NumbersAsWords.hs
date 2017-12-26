@@ -29,7 +29,7 @@ atomify number mag =
           then Nothing
           else Just mol
       quotient =
-        if number < 100 -- This is a hack :(
+        if number < 100
           then Nothing
           else Just (quot number mag)
   in (quotient, remainder)
@@ -70,3 +70,5 @@ numberAsWords number =
       let Molecule mag label = findFirst number molecules
           (count, rest) = atomify number mag
       in recNumAsWords count ++ [label] ++ recNumAsWords rest
+
+

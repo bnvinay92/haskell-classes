@@ -1,7 +1,7 @@
 module Main where
 
 import NumbersAsWords
-import TicTacToe
+import TTT
 import HigherOrderSpag
 
 main :: IO ()
