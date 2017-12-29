@@ -1,7 +1,8 @@
 module Main where
 
-import TicTacToe
 import NumbersAsWords
+import TicTacToe
+import HigherOrderSpag
 
 main :: IO ()
 main = putStrLn "Hi"
