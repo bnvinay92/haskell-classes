@@ -1,8 +1,6 @@
 module Main where
 
-import NumbersAsWords
-import TTT
-import HigherOrderSpag
+import JaySean
 
 main :: IO ()
 main = putStrLn "Hi"
