@@ -1,6 +1,6 @@
 module JaySean where
 
-import           Data.List (intercalate, intersperse)
+import           Data.List (intercalate)
 
 newtype KV =
   KV (String, Json)
@@ -26,24 +26,3 @@ instance Show Json where
 
 instance Show KV where
   show (KV (key, json)) = show key ++ " : " ++ show json
-
-json =
-  JArray
-    [ JObject [KV ("Key1", JObject [KV ("Key 3", JString "Value1"), KV ("Key 4", JNull)])]
-    , JObject [KV ("Key2", JNull)]
-    , JObject [KV ("Key5", JNull)]
-    , JArray []
-    , JArray
-        [ JNumber 3
-        , JBool False
-        , JObject
-            [ KV
-                ( "Hi"
-                , JArray
-                    [ JString "yoyo"
-                    , JString "honey"
-                    , JObject [KV ("BookingId", JObject [KV ("BookingId", JString "Value1"), KV ("Key 4", JNull)])]
-                    ])
-            ]
-        ]
-    ]
