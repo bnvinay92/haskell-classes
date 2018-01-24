@@ -73,5 +73,3 @@ game b s = putStrLn (game' b s)
 
 playFirstMove :: Strategy
 playFirstMove b = play (head (legalMoves b)) b
-
-

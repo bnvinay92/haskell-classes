@@ -38,7 +38,6 @@ instance (Ord a) => Gonoid (BST a) where
 -- Map: Intersect
 newtype MapGonoid k a =
   MapGonoid (Map k a)
-  deriving (Show)
 
 instance (Ord k, Semigroup a) => Semigroup (MapGonoid k a) where
   (MapGonoid a) <> (MapGonoid b) = MapGonoid $ intersectionWith (<>) a b
@@ -106,7 +105,7 @@ instance (Ord a, Bounded a) => Semigroup (MinGonoid a) where
   MinGonoid a <> MinGonoid b = MinGonoid $ min a b
 
 instance (Ord a, Bounded a) => Gonoid (MinGonoid a) where
-  neutral = MinGonoid minBound
+  neutral = MinGonoid maxBound
 
 -- Max
 newtype MaxGonoid a =

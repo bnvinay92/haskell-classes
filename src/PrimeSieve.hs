@@ -17,9 +17,3 @@ nPrimes' n primes i
     in nPrimes' n primes' (i + 1)
 
 nPrimes n = nPrimes' n [2] 3
-
-primeFold :: [Integer]-> Integer -> [Integer]
-primeFold ps c =
-  if isPrime c ps
-    then c : ps
-    else ps
