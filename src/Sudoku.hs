@@ -1,92 +1,104 @@
 module Sudoku where
 
 import           Data.Char  (digitToInt)
-import           Data.List  (intercalate, sort, sortOn)
-import           Data.Map   (Map, fromList, insert, lookup, toAscList)
+import           Data.List  (intercalate, partition, sort, sortOn, transpose, (\\))
+import           Data.Map   (Map, elems, fromList, insert, lookup, toAscList, union)
 import           Data.Maybe (fromJust)
+import           Prelude    hiding (lookup)
 
-data Cell = Cell Int Int deriving (Eq, Show)
-instance Ord Cell where compare (Cell a b) (Cell x y) = compare (a * 9 + b) (x * 9 + y)
-
+type Board = Map Coord Digit
+type Coord = (Int, Int)
 type Digit = [Int]
-type Board = Map Cell Digit
+type Space = [Coord]
 
-hardBoard = readBoard ".....6....59.....82....8....45........3........6..3.54...325..6.................."
-easyBoard = readBoard "003020600900305001001806400008102900700000008006708200002609500800203009005010300"
-cardBoard = readBoard "200080300060070084030500209000105408000000000402706000301007040720040060004010003"
-ezBoard = readBoard "000003017015009008060000000100007000009000200000500004000000020500600340340200000"
+cardBoard = readBoard "020810740700003100090002805009040087400208003160030200302700060005600008076051090"
+sandBoard = readBoard "030050040008010500460000012070502080000603000040109030250000098001020600080060020"
+hardBoard = readBoard "100920000524010000000000070050008102000000000402700090060000000000030945000071006"
+deccanBoard = readBoard "..36....92..1..6.86...8.2........4.7..64791..8.4........2.4...17.1..6..24....57.."
+deccanXBoard = readBoard ".826..........3...43......5......7..2..7.....3...8...4...1.4.2....2....3..85....7"
 
-rows = [[Cell x y | y <- [0 .. 8]] | x <- [0 .. 8]]
+size = 9 :: Int
+root = head [x | x <- [1 .. size], x * x == size] :: Int
+rowSpaces = [[(x, y) | y <- [0 .. size - 1]] | x <- [0 .. size - 1]]
 
-cols = [[Cell x y | x <- [0 .. 8]] | y <- [0 .. 8]]
-
-grids = map grid origins
+allSpaces :: [[Coord]]
+allSpaces = rowSpaces ++ colSpaces ++ gridSpaces
   where
-    origins = [Cell x y | x <- [0, 3, 6], y <- [0, 3, 6]]
-    grid (Cell x y) = [Cell a b | a <- [x .. x + 2], b <- [y .. y + 2]]
+    colSpaces = transpose rowSpaces
+    gridSpaces = map grid origins
+      where
+        origins = [(x, y) | x <- [0,root .. size - 1], y <- [0,root .. size - 1]]
+        grid (x, y) = [(a, b) | a <- [x .. x + root - 1], b <- [y .. y + root - 1]]
 
-find board cell = fromJust $ Data.Map.lookup cell board
-
-readBoard str = fromList $ zip (concat rows) [toDigit s | s <- str]
+readBoard :: String -> Board
+readBoard str = fromList $ zip coords digits
   where
+    coords = concat rowSpaces
+    digits = map toDigit str
     toDigit c
       | c == '0' || c == '.' = [1 .. 9]
       | otherwise = [digitToInt c]
 
-ppBoard board = unlines $ intercalate [line] sections
+ppBoard :: Board -> IO ()
+ppBoard = putStr . unlines . map unwords . splitHorizontally . splitVertically . groupDigits . toDigits
   where
+    toDigits = map ppDigit . elems
     ppDigit [d] = show d
     ppDigit _   = "."
-    sections = map (map (unwords . intercalate ["|"])) digitsChunked
-      where
-        digitsChunked = (splitEvery 3 . splitEvery 3 . splitEvery 3) digitList
-        digitList = map (ppDigit . snd) $ toAscList board
+    groupDigits = splitEvery root . splitEvery root . splitEvery root
+    splitVertically = map (map (intercalate ["|"]))
+    splitHorizontally = intercalate [[line]]
     line = "- - - + - - - + - - -"
     splitEvery n [] = []
-    splitEvery n lst =
-      let (head, tail) = splitAt n lst
-      in head : splitEvery n tail
+    splitEvery n xs = head : splitEvery n tail
+      where
+        (head, tail) = splitAt n xs
 
-prune board =
-  if pruned == board
+digits :: Board -> Space -> [Digit]
+digits b = map (fromJust . (`lookup` b))
+
+isFixed :: Digit -> Bool
+isFixed = (==) 1 . length
+
+prune :: Board -> Board
+prune b =
+  if pruned == b
     then pruned
     else prune pruned
   where
-    pruned = foldl prune' board $ rows ++ cols ++ grids
-    prune' :: Board -> [Cell] -> Board
-    prune' board space = foldl (\b (c, ds) -> insert c ds b) board $ zip space $ map (remove fixList) digits
-      where
-        fixList = concat $ filter (\ds -> length ds == 1) digits
-        digits = map (find board) space
-        remove _ [x]   = [x]
-        remove set lst = filter (`notElem` set) lst
+    pruned = foldl pruneSpace b allSpaces
+    pruneSpace board space =
+      let ds = digits board space
+          prunedDigits = map (remove $ fixedList ds) ds
+      in union (fromList $ zip space prunedDigits) board
+    remove _ [x]                = [x]
+    remove alreadyFixed guesses = guesses \\ alreadyFixed
+    fixedList = concat . filter ((==) 1 . length)
 
-solve board =
-  case solve' board of
-    (Just b) -> putStrLn $ ppBoard b
-    _        -> putStrLn "No solution"
+solve :: Board -> IO ()
+solve b =
+  case solve' $ prune b of
+    (Just board) -> ppBoard board
+    _            -> putStrLn "No Solution!"
 
+solve' :: Board -> Maybe Board
 solve' b =
-  case (complete, valid) of
-    (True, True) -> Just board
-    (_, True) -> firstJust guessList (\(c, d) -> solve' $ insert c [d] board)
+  case (isFilled, isValid) of
+    (True, True) -> Just b
+    (False, True) -> firstJust (\guess@(c, d) -> solve' $ prune $ insert c d b) $ allGuesses b
     _ -> Nothing
   where
-    board = prune b
-    complete = isFilled board
-    valid = isValid board
-    guessList =
-      concatMap (\(cell, digits) -> [(cell, x) | x <- digits]) $
-      sortOn (length . snd) $ filter (\d -> length (snd d) > 1) $ toAscList board
-    firstJust [] f = Nothing
-    firstJust (x:xs) f =
-      let r = f x
-      in case r of
-           j@(Just _) -> j
-           _          -> firstJust xs f
-    isValid board = all (isValidSpace . map (find board)) (rows ++ cols ++ grids)
+    allGuesses = concatMap (\(k, cs) -> [(k, [c]) | c <- cs]) . sortOn length . filter (not . isFixed . snd) . toAscList
+    isFilled = all ((==) 1 . length) (elems b)
+    isValid = all (hasDistinct . concat . filter isFixed . digits b) allSpaces
       where
-        isValidSpace :: [Digit] -> Bool
-        isValidSpace = comparePairwise . sort . filter (\d -> length d == 1)
-        comparePairwise xs = and $ zipWith (/=) xs (drop 1 xs)
-    isFilled board = all (\lst -> length lst == 1) $ map snd $ toAscList board
+        hasDistinct [] = True
+        hasDistinct xs =
+          let sorted = sort xs
+          in and $ zipWith (/=) sorted (drop 1 sorted)
+    firstJust _ [] = Nothing
+    firstJust f (g:gs) =
+      let m = f g
+      in case m of
+           x@(Just _) -> x
+           _          -> firstJust f gs
