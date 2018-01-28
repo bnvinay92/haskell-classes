@@ -28,6 +28,10 @@ foldMayBees f b (x:xs) =
     (Just board) -> foldMayBees f board xs
     _            -> Nothing
 
+andThen :: Maybe Board -> (Board -> Maybe Board) -> Maybe Board
+andThen (Just b) f = f b
+andThen _ _        = Nothing
+
 readBoard :: String -> Maybe Board
 readBoard str = foldMayBees assign emptyBoard assignments
   where
@@ -59,8 +63,8 @@ assign board (c, d) = foldMayBees eliminate board eliminations
 eliminate :: Board -> (Coord, Digit) -> Maybe Board
 eliminate b (c, d) =
   if d `elem` guesses
-    then Just newBoard >>= strat1 assignment >>= strat2 (c, d)
-    else return b
+    then strat1 assignment newBoard `andThen` strat2 (c, d)
+    else Just b
   where
     newBoard = b // [assignment]
     assignment = (c, delete d guesses)
@@ -100,7 +104,7 @@ solve b =
     [] -> Just b
     _ ->
       let (_, (c, ds)) = minimum possibleGuesses
-      in firstJust [assign b (c, d) >>= solve | d <- reverse ds]
+      in firstJust [assign b (c, d) `andThen` solve | d <- reverse ds]
   where
     possibleGuesses = [(size, (c, ds)) | (c, ds) <- assocs b, let size = length ds, size /= 1]
     firstJust []              = Nothing
@@ -109,5 +113,5 @@ solve b =
 
 sudoku :: String -> IO ()
 sudoku s =
-  let Just b = readBoard s >>= solve
+  let Just b = readBoard s `andThen` solve
   in putStr . ppBoard $ b
