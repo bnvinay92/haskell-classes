@@ -1,46 +1,43 @@
 module Sudoku where
 
-import           Data.Char  (digitToInt)
-import           Data.List  (intercalate, partition, sort, sortOn, transpose, (\\))
-import           Data.Map   (Map, elems, fromList, insert, lookup, toAscList, union)
-import           Data.Maybe (fromJust)
-import           Prelude    hiding (lookup)
+import           Control.Arrow (second)
+import           Data.Array    (Array, array, assocs, elems, (!), (//))
+import           Data.Char     (digitToInt)
+import           Data.List     (delete, intercalate, nub, sort)
+import           Debug.Trace
 
-type Board = Map Coord Digit
+type Digit = Int
 type Coord = (Int, Int)
-type Digit = [Int]
-type Space = [Coord]
+type DistinctSpace = [Coord]
+type Board = Array Coord [Digit]
 
-cardBoard = readBoard "020810740700003100090002805009040087400208003160030200302700060005600008076051090"
-sandBoard = readBoard "030050040008010500460000012070502080000603000040109030250000098001020600080060020"
-hardBoard = readBoard "100920000524010000000000070050008102000000000402700090060000000000030945000071006"
-deccanBoard = readBoard "..36....92..1..6.86...8.2........4.7..64791..8.4........2.4...17.1..6..24....57.."
-deccanXBoard = readBoard ".826..........3...43......5......7..2..7.....3...8...4...1.4.2....2....3..85....7"
+s1 = "......52..8.4......3...9...5.1...6..2..7........3.....6...1..........7.4.......3."
+s2 = "4.....8.5.3..........7......2.....6.....8.4......1.......6.3.7.5..2.....1.4......"
+s3 = "8..7....4.5....6............3.97...8....43..5....2.9....6......2...6...7.71..83.2"
 
-size = 9 :: Int
-root = head [x | x <- [1 .. size], x * x == size] :: Int
-rowSpaces = [[(x, y) | y <- [0 .. size - 1]] | x <- [0 .. size - 1]]
+spaceSize = 9
+root = head [x | x <- [1 .. spaceSize], x * x == spaceSize]
+allDigits = [1 .. spaceSize]
+indexes = [0 .. spaceSize - 1]
 
-allSpaces :: [[Coord]]
-allSpaces = rowSpaces ++ colSpaces ++ gridSpaces
+foldMayBees :: (Board -> a -> Maybe Board) -> Board -> [a] -> Maybe Board
+foldMayBees f b [] = Just b
+foldMayBees f b [a] = f b a
+foldMayBees f b (x:xs) =
+  case f b x of
+    (Just board) -> foldMayBees f board xs
+    _            -> Nothing
+
+readBoard :: String -> Maybe Board
+readBoard str = foldMayBees assign emptyBoard assignments
   where
-    colSpaces = transpose rowSpaces
-    gridSpaces = map grid origins
-      where
-        origins = [(x, y) | x <- [0,root .. size - 1], y <- [0,root .. size - 1]]
-        grid (x, y) = [(a, b) | a <- [x .. x + root - 1], b <- [y .. y + root - 1]]
+    emptyBoard = array ((0, 0), (spaceSize - 1, spaceSize - 1)) $ zip allCoords $ repeat allDigits
+    assignments = map (second digitToInt) . filter isDigit $ zip allCoords str
+    isDigit = (`elem` concatMap show allDigits) . snd
+    allCoords = [(x, y) | x <- indexes, y <- indexes]
 
-readBoard :: String -> Board
-readBoard str = fromList $ zip coords digits
-  where
-    coords = concat rowSpaces
-    digits = map toDigit str
-    toDigit c
-      | c == '0' || c == '.' = [1 .. 9]
-      | otherwise = [digitToInt c]
-
-ppBoard :: Board -> IO ()
-ppBoard = putStr . unlines . map unwords . splitHorizontally . splitVertically . groupDigits . toDigits
+ppBoard :: Board -> String
+ppBoard = unlines . map unwords . splitHorizontally . splitVertically . groupDigits . toDigits
   where
     toDigits = map ppDigit . elems
     ppDigit [d] = show d
@@ -54,51 +51,63 @@ ppBoard = putStr . unlines . map unwords . splitHorizontally . splitVertically .
       where
         (head, tail) = splitAt n xs
 
-digits :: Board -> Space -> [Digit]
-digits b = map (fromJust . (`lookup` b))
-
-isFixed :: Digit -> Bool
-isFixed = (==) 1 . length
-
-prune :: Board -> Board
-prune b =
-  if pruned == b
-    then pruned
-    else prune pruned
+assign :: Board -> (Coord, Digit) -> Maybe Board
+assign board (c, d) = foldMayBees eliminate board eliminations
   where
-    pruned = foldl pruneSpace b allSpaces
-    pruneSpace board space =
-      let ds = digits board space
-          prunedDigits = map (remove $ fixedList ds) ds
-      in union (fromList $ zip space prunedDigits) board
-    remove _ [x]                = [x]
-    remove alreadyFixed guesses = guesses \\ alreadyFixed
-    fixedList = concat . filter ((==) 1 . length)
+    eliminations = zip (repeat c) $ delete d $ board ! c
 
-solve :: Board -> IO ()
+eliminate :: Board -> (Coord, Digit) -> Maybe Board
+eliminate b (c, d) =
+  if d `elem` guesses
+    then Just newBoard >>= strat1 assignment >>= strat2 (c, d)
+    else return b
+  where
+    newBoard = b // [assignment]
+    assignment = (c, delete d guesses)
+    guesses = b ! c
+
+-- If 'd' is a fixed digit, eliminate it from peers.
+strat1 :: (Coord, [Digit]) -> Board -> Maybe Board
+strat1 (c, ds) b =
+  case ds of
+    [] -> Nothing
+    [d] -> foldMayBees eliminate b (zip peersOfC (repeat d))
+      where peersOfC = (nub . concat . spacesContaining) c
+    _ -> Just b
+
+-- If 'd' appears in exactly one coord of a space, then fix it there.
+strat2 :: (Coord, Digit) -> Board -> Maybe Board
+strat2 (c, d) b = foldMayBees (tryAssigning d) b (spacesContaining c)
+  where
+    tryAssigning d board space =
+      case filter ((d `elem`) . (board !)) space of
+        []  -> Nothing
+        [s] -> assign board (s, d)
+        _   -> Just board
+
+spacesContaining :: Coord -> [DistinctSpace]
+spacesContaining (r, c) = [row, col, grid]
+  where
+    row = [(r, y) | y <- indexes, y /= c]
+    col = [(x, c) | x <- indexes, x /= r]
+    grid = [(x, y) | x <- [gx .. gx + root - 1], y <- [gy .. gy + root - 1], (x, y) /= (r, c)]
+    (gx, gy) = (root * quot r root, root * quot c root)
+    root = head [x | x <- [1 .. spaceSize], x * x == spaceSize]
+
+solve :: Board -> Maybe Board
 solve b =
-  case solve' $ prune b of
-    (Just board) -> ppBoard board
-    _            -> putStrLn "No Solution!"
-
-solve' :: Board -> Maybe Board
-solve' b =
-  case (isFilled, isValid) of
-    (True, True) -> Just b
-    (False, True) -> firstJust (\guess@(c, d) -> solve' $ prune $ insert c d b) $ allGuesses b
-    _ -> Nothing
+  case possibleGuesses of
+    [] -> Just b
+    _ ->
+      let (_, (c, ds)) = minimum possibleGuesses
+      in firstJust [assign b (c, d) >>= solve | d <- reverse ds]
   where
-    allGuesses = concatMap (\(k, cs) -> [(k, [c]) | c <- cs]) . sortOn length . filter (not . isFixed . snd) . toAscList
-    isFilled = all ((==) 1 . length) (elems b)
-    isValid = all (hasDistinct . concat . filter isFixed . digits b) allSpaces
-      where
-        hasDistinct [] = True
-        hasDistinct xs =
-          let sorted = sort xs
-          in and $ zipWith (/=) sorted (drop 1 sorted)
-    firstJust _ [] = Nothing
-    firstJust f (g:gs) =
-      let m = f g
-      in case m of
-           x@(Just _) -> x
-           _          -> firstJust f gs
+    possibleGuesses = [(size, (c, ds)) | (c, ds) <- assocs b, let size = length ds, size /= 1]
+    firstJust []              = Nothing
+    firstJust (x@(Just j):xs) = x
+    firstJust (_:xs)          = firstJust xs
+
+sudoku :: String -> IO ()
+sudoku s =
+  let Just b = readBoard s >>= solve
+  in putStr . ppBoard $ b
