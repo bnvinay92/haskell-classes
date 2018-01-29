@@ -104,6 +104,7 @@ solve b =
     [] -> Just b
     _ ->
       let (_, (c, ds)) = minimum possibleGuesses
+      -- 'reverse ds' is key to beating abnv's benchmark.
       in firstJust [assign b (c, d) `andThen` solve | d <- reverse ds]
   where
     possibleGuesses = [(size, (c, ds)) | (c, ds) <- assocs b, let size = length ds, size /= 1]
